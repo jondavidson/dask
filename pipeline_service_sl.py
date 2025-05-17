@@ -292,6 +292,30 @@ def _cmd_serve(args):
     except KeyboardInterrupt:
         logging.info("Interrupted; shutting down …")
 
+# ------------------------------------------------------------------ submit
+def _cmd_submit(args):
+    if not STATE.exists():
+        raise SystemExit("Service not running – start with `serve`.")
+
+    info = json.loads(STATE.read_text())
+    client = Client(info["scheduler"])
+
+    py_path = Path(args.pipeline_file).expanduser().resolve()
+    spec = importlib.util.spec_from_file_location("user_pipeline", py_path)
+    if spec is None or spec.loader is None:
+        raise SystemExit("Cannot import pipeline file")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)                     # type: ignore[arg-type]
+
+    if not hasattr(module, "pipeline"):
+        raise SystemExit("pipeline file must define a `pipeline` variable")
+
+    # Execute the run on the live cluster
+    DynamicPipelineRunner(module.pipeline, client).run()
+    logging.info("Run complete")
+
+
 # ------------------------------------------------------------------ stop
 def _cmd_stop(_):
     if not STATE.exists():
