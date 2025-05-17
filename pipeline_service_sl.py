@@ -260,6 +260,7 @@ while True:
 ###############################################################################
 STATE = Path.home() / ".pipeline_server.json"
 
+# ------------------------------------------------------------------ serve
 def _cmd_serve(args):
     cluster = LocalCluster(
         n_workers=args.n_workers,
@@ -267,13 +268,65 @@ def _cmd_serve(args):
         processes=True,
         memory_limit="4GB",
     )
-    info = {"scheduler": cluster.scheduler_address, "pid": os.getpid(), "port": args.port}
+    info = {"scheduler": cluster.scheduler_address,
+            "pid": os.getpid(),
+            "port": args.port}
     STATE.write_text(json.dumps(info))
+
     client = Client(cluster)
 
-    _launch_streamlit(client, args.port)
-    logging.info("Service up – dashboard http://localhost:%s  scheduler=%s", args.port, info["scheduler"])
+    ui_path = Path(args.ui_file).expanduser().resolve()
+    if not ui_path.exists():
+        raise SystemExit(f"UI file {ui_path} not found")
+    _launch_streamlit(ui_path, args.port)
 
+    logging.info(
+        "Service ready – UI http://localhost:%s  scheduler=%s",
+        args.port, info["scheduler"]
+    )
+
+    # Keep the service process alive until SIGINT/SIGTERM
     try:
         while True:
-            time.sleep
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        logging.info("Interrupted; shutting down …")
+
+# ------------------------------------------------------------------ stop
+def _cmd_stop(_):
+    if not STATE.exists():
+        print("Service not running")
+        return
+    info = json.loads(STATE.read_text())
+    os.kill(info["pid"], signal.SIGTERM)
+    STATE.unlink(missing_ok=True)
+    print("Service stopped")
+
+# ------------------------------------------------------------------ main
+def main():
+    parser = argparse.ArgumentParser(prog="pipeline_service")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_serve = sub.add_parser("serve", help="start cluster + Streamlit UI")
+    p_serve.add_argument("--n-workers", type=int, default=4)
+    p_serve.add_argument("--port", type=int, default=8501)
+    p_serve.add_argument("--ui-file",
+                         default="pipeline_dashboard.py",
+                         help="Streamlit dashboard file")
+
+    p_sub = sub.add_parser("submit", help="submit a pipeline run")
+    p_sub.add_argument("pipeline_file",
+                       help=".py file exposing a `pipeline` variable")
+
+    sub.add_parser("stop", help="stop the running service")
+
+    args = parser.parse_args()
+    {
+        "serve": _cmd_serve,
+        "submit": _cmd_submit,
+        "stop":  _cmd_stop,
+    }[args.cmd](args)
+
+if __name__ == "__main__":
+    main()
+
