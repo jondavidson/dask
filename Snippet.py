@@ -186,3 +186,29 @@ def run(
 
 def load_pipeline_from_yaml(path: str | Path) -> Pipeline: with open(path, "r", encoding="utf-8") as f:
 
+
+
+my_pipeline/
+│
+├── core/
+│   ├── __init__.py          # re-export Script, PipelineNode, Pipeline
+│   ├── script.py            # Script class
+│   ├── dag.py               # PipelineNode + Pipeline (+ tree utils)
+│   └── logging.py           # setup_logging()
+│
+├── runner/
+│   ├── __init__.py
+│   └── runner.py            # PipelineRunner (delayed version)
+│
+├── io/
+│   ├── __init__.py
+│   └── yaml_loader.py       # load_pipeline_from_yaml / to_yaml helpers
+│
+├── cli/
+│   ├── __init__.py
+│   └── main.py              # argparse entry-point, invokes runner
+│
+└── tools/
+    ├── json2yaml.py         # converter utility
+    └── tree_view.py         # UTF-8 tree printer
+
