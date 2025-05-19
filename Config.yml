@@ -1,0 +1,51 @@
+# sales_pipeline.yaml
+name: sales_pipeline
+
+# ┌── raw_sales_loader ┐
+# │                    ▼
+# │             sales_enriched ──► sales_snapshot ─► sales_dashboard
+# │                    ▲
+# └── currency_rates_loader ┘
+
+nodes:
+  # ────────────────────────────
+  - name: raw_sales_loader          # ① pulls daily raw CSVs from S3
+    script:
+      name: raw_sales_loader
+      path: scripts/raw_sales_loader.py
+      default_args: { "--bucket": "data-raw" }
+      dated: true
+    depends_on: []
+
+  - name: currency_rates_loader     # ② fetches FX rates for the same day
+    script:
+      name: currency_rates_loader
+      path: scripts/currency_rates_loader.py
+      default_args: {}
+      dated: true
+    depends_on: []
+
+  - name: sales_enriched            # ③ joins raw + FX and writes Parquet
+    script:
+      name: sales_enriched
+      path: scripts/sales_enriched.py
+      default_args: { "--out-dir": "data/enriched" }
+      dated: true
+    depends_on: [ raw_sales_loader, currency_rates_loader ]
+
+  - name: sales_snapshot            # ④ builds an all-dates snapshot table
+    script:
+      name: sales_snapshot
+      path: scripts/sales_snapshot.py
+      default_args: {}
+      dated: true                     # still takes --sd/--ed for range
+    depends_on: [ sales_enriched ]
+    requires_all_dates: true          # wait until every daily partition done
+
+  - name: sales_dashboard           # ⑤ refreshes BI extracts
+    script:
+      name: sales_dashboard
+      path: scripts/sales_dashboard.py
+      default_args: {}
+      dated: false
+    depends_on: [ sales_snapshot ]
