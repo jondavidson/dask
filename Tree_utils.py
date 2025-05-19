@@ -75,3 +75,9 @@ if __name__ == "__main__":
     cfg = yaml.safe_load(yaml_src)
     mapping = {n["name"]: n.get("depends_on", []) for n in cfg["nodes"]}
     print(pipeline_tree(mapping))
+from pipeline_framework import Pipeline
+from tree_utils import pipeline_tree
+
+pipe = load_pipeline_from_yaml("sales_pipeline.yaml")
+nodes = {n: pipe.nodes[n].depends_on for n in pipe.nodes}
+print(pipeline_tree(nodes))
