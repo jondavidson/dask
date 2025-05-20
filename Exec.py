@@ -1,6 +1,21 @@
 # ---------- inside PipelineRunner (replace the old helper) ------------------
 
 import subprocess, sys, os
+from distributed import get_worker
+
+try:
+    worker = get_worker()
+except ValueError:
+    worker = None
+
+for line in proc.stdout or []:
+    print(line, end="")  # shows up in dashboard logs
+    if worker:
+        worker.log_event(
+            key=f"{context.label}:{exec_obj.name}:{sd}",
+            msg=line.rstrip()
+        )
+
 
 @staticmethod
 def _exec_with_retry(
