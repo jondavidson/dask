@@ -9,6 +9,31 @@ import yaml
 from dataclasses_json import dataclass_json, LetterCase, DataClassJsonMixin
 from marshmallow import EXCLUDE
 
+# ────────────────── Hierarchical dataset loader  ──────────────────
+def flatten_dataset_tree(tree: Dict[str, Any],
+                         prefix: list[str] | None = None,
+                         inherited: Dict[str, Any] | None = None) -> Dict[str, DatasetSpec]:
+    prefix = prefix or []
+    inherited = inherited or {}
+    flat: Dict[str, DatasetSpec] = {}
+    meta_keys = {"_base", "_layout", "_suffix"}
+
+    for key, val in tree.items():
+        if key.startswith("_"):
+            continue
+        if isinstance(val, dict) and "partitioning" not in val:
+            # subgroup
+            next_inh = {**inherited, **{k: v for k, v in val.items() if k in meta_keys}}
+            flat.update(flatten_dataset_tree(val, prefix + [key], next_inh))
+        else:
+            fq = ".".join(prefix + [key])
+            cfg = {**inherited, **val}
+            cfg["base_path"] = cfg.pop("_base", cfg.get("base_path", "."))
+            cfg["layout"] = cfg.pop("_layout", cfg.get("layout", "{date}"))
+            cfg["suffix"] = cfg.pop("_suffix", cfg.get("suffix", ".parquet"))
+            flat[fq] = DatasetSpec.from_key_and_cfg(fq, cfg)
+    return flat
+
 
 # ────────────────── Keyed mix-in ──────────────────
 @dataclass_json(letter_case=LetterCase.CAMEL, meta={"unknown": EXCLUDE})
