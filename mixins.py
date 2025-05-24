@@ -1,7 +1,7 @@
 # mixins.py
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Type, TypeVar, Dict, Any
 from enum import Enum
 from pathlib import Path
 from datetime import datetime
@@ -15,7 +15,9 @@ class Partitioning(str, Enum):
     SNAPSHOT = "snapshot"
 
 
-# ──────────────── Mixin: Keyed ────────────────
+
+T = TypeVar("T", bound="Keyed")
+
 @dataclass
 class Keyed:
     _name: str = field(init=False, repr=False)
@@ -25,23 +27,33 @@ class Keyed:
         return self._name
 
     @classmethod
-    def from_dict(cls, key: str, cfg: Dict[str, Any]) -> Any:
+    def from_dict(cls: Type[T], key: str, cfg: Dict[str, Any]) -> T:
         obj = cls(**cfg)
         object.__setattr__(obj, "_name", key)
         return obj
 
     @classmethod
-    def load_mapping(cls, raw: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    def load_mapping(cls: Type[T], raw: Dict[str, Dict[str, Any]]) -> Dict[str, T]:
         return {k: cls.from_dict(k, v) for k, v in raw.items()}
 
 
+
 # ──────────────── Mixin: Loggable ────────────────
+from datetime import datetime
+
 class LoggableMixin:
-    def log_id(self, logical_dt: Optional[datetime] = None) -> str:
+    @property
+    def name(self) -> str:
+        raise NotImplementedError("Must be mixed with a Keyed class that defines `.name`")
+
+    def log_id(self, logical_dt: datetime | None = None) -> str:
         return f"{self.name}:{logical_dt.isoformat()}" if logical_dt else self.name
 
 
 # ──────────────── Mixin: PathResolving ────────────────
+from pathlib import Path
+from datetime import datetime
+
 class PathResolvingMixin:
     def resolve_path(self, logical_dt: datetime, *, absolute: bool = True) -> str:
         values = {
@@ -52,19 +64,26 @@ class PathResolvingMixin:
             "day": f"{logical_dt.day:02}",
             **{k: v for k, v in self.__dict__.items() if isinstance(v, str)}
         }
-        rel_path = self.layout.format(**values)
+        layout = getattr(self, "layout", "{date}")
+        base_path = getattr(self, "base_path", ".")
         suffix = getattr(self, "suffix", ".parquet") or ""
-        full = Path(self.base_path) / f"{rel_path}{suffix}"
+
+        rel_path = layout.format(**values)
+        full = Path(base_path) / f"{rel_path}{suffix}"
         return str(full.resolve()) if absolute else str(full)
 
 
 # ──────────────── Mixin: Validatable ────────────────
 class ValidatableMixin:
+    @property
+    def name(self) -> str:
+        raise NotImplementedError("Must be mixed with Keyed")
+
     def validate(self) -> None:
         if not getattr(self, "script", None):
-            raise ValueError(f"{self.name} missing 'script'")
+            raise ValueError(f"{self.name} missing required 'script'")
         if not getattr(self, "outputs", None):
-            raise ValueError(f"{self.name} has no 'outputs'")
+            raise ValueError(f"{self.name} must define at least one 'output'")
 
 
 # ──────────────── Optional: DatasetLocator helper ────────────────
